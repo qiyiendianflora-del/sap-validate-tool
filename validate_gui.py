@@ -305,7 +305,7 @@ class StatCard(QFrame):
         self.setStyleSheet(f"StatCard{{background:white;border-radius:10px;border:1px solid {C_BORDER};}}")
         sh=QGraphicsDropShadowEffect();sh.setBlurRadius(12);sh.setOffset(0,2);sh.setColor(QColor(0,0,0,25));self.setGraphicsEffect(sh)
         ly=QVBoxLayout(self);ly.setContentsMargins(14,8,14,8);ly.setSpacing(2)
-        ly.addWidget(QLabel(f"{icon}  {title}"));self.children()[-1].setStyleSheet(f"color:{C_TEXT_SEC};font-size:11px;border:none;")
+        top=QLabel(f"{icon}  {title}");top.setStyleSheet(f"color:{C_TEXT_SEC};font-size:11px;border:none;");ly.addWidget(top)
         self.vl=QLabel(str(value));self.vl.setStyleSheet(f"color:{color};font-size:24px;font-weight:bold;border:none;");ly.addWidget(self.vl)
     def set_value(self,v): self.vl.setText(str(v))
 
@@ -371,8 +371,9 @@ class MainWindow(QMainWindow):
         hdr=QFrame();hdr.setFixedHeight(46)
         hdr.setStyleSheet(f"QFrame{{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 {C_PRIMARY},stop:1 {C_PRIMARY_L});border-radius:10px;}}")
         hl=QHBoxLayout(hdr);hl.setContentsMargins(20,0,20,0)
-        hl.addWidget(QLabel(f"📋  {APP_NAME}"));hl.children()[-1].setStyleSheet("color:white;font-size:17px;font-weight:bold;background:transparent;")
-        hl.addStretch();hl.addWidget(QLabel(VERSION));hl.children()[-1].setStyleSheet("color:rgba(255,255,255,0.7);font-size:12px;background:transparent;")
+        ht=QLabel(f"📋  {APP_NAME}");ht.setStyleSheet("color:white;font-size:17px;font-weight:bold;background:transparent;")
+        hv=QLabel(VERSION);hv.setStyleSheet("color:rgba(255,255,255,0.7);font-size:12px;background:transparent;")
+        hl.addWidget(ht);hl.addStretch();hl.addWidget(hv)
         root.addWidget(hdr)
 
         # 页面切换Tab
