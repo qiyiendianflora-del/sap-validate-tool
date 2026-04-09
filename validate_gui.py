@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SAP凭证校验工具 v2.3 - PyQt5 GUI（橙色主题 + 表格粘贴修复 + 布局优化）
+SAP凭证校验工具 v2.6 - PyQt5 GUI（橙色主题 + 字体缩放 + 表格粘贴修复）
 打包：pyinstaller --onefile --windowed --name SAP凭证校验工具 validate_gui.py
 """
 import sys, os, json
@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import (
     QPushButton, QLabel, QFileDialog, QTableWidget, QTableWidgetItem,
     QHeaderView, QProgressBar, QMessageBox, QGroupBox, QAbstractItemView,
     QTabBar, QFrame, QGraphicsDropShadowEffect, QStackedWidget, QToolTip,
-    QShortcut
+    QShortcut, QMenuBar, QMenu, QAction, QDialog, QSlider, QDialogButtonBox
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QPoint
 from PyQt5.QtGui import QFont, QColor, QDragEnterEvent, QDropEvent, QKeySequence
@@ -24,7 +24,7 @@ from openpyxl.styles import PatternFill, Font as XlFont, Alignment, Border, Side
 from openpyxl.utils import get_column_letter, column_index_from_string
 
 # ━━━━━━━ 常量 ━━━━━━━
-APP_NAME="SAP凭证校验工具"; VERSION="v2.5"; DATA_ROW=4
+APP_NAME="SAP凭证校验工具"; VERSION="v2.6"; DATA_ROW=4
 CONFIG_FILE=os.path.join(os.path.expanduser("~"),".sap_validate_config.json")
 CACHE_FILE=os.path.join(os.path.expanduser("~"),".sap_validate_cache.json")
 
@@ -51,14 +51,29 @@ HEADER_ROW3=[10,4,2,'8(YYYYMMDD)','8(YYYYMMDD)',5,'(9,5)',25,16,2,10,1,10,3,'(13
 NUM_COLS=len(HEADER_ROW1)
 COL_LETTERS=[get_column_letter(i+1) for i in range(NUM_COLS)]
 
-# ━━━━━━━ 字体体系（适配高DPI笔记本 2880×1800 @200%）━━━━━━━
+# ━━━━━━━ 字体体系（基准值 + 缩放） ━━━━━━━
 FONT_FAMILY = "微软雅黑"
-FONT_TITLE  = 20  # 标题
-FONT_H2     = 16  # 二级标题/按钮
-FONT_BODY   = 14  # 正文
-FONT_SMALL  = 12  # 辅助信息
-FONT_GRID   = 13  # 表格数据
-FONT_GRID_H = 14  # 表格表头（参照标题级别）
+# 基准字号（缩放100%时的值）
+BASE_TITLE  = 14  # 标题
+BASE_H2     = 12  # 二级标题/按钮
+BASE_BODY   = 11  # 正文
+BASE_SMALL  = 10  # 辅助信息
+BASE_GRID   = 10  # 表格数据
+BASE_GRID_H = 11  # 表格表头
+
+# 全局缩放比例（运行时动态修改）
+_font_scale = 1.0
+
+def fs(base):
+    """根据缩放比例计算实际字号"""
+    return max(8, int(base * _font_scale + 0.5))
+
+def FONT_TITLE():  return fs(BASE_TITLE)
+def FONT_H2():     return fs(BASE_H2)
+def FONT_BODY():   return fs(BASE_BODY)
+def FONT_SMALL():  return fs(BASE_SMALL)
+def FONT_GRID():   return fs(BASE_GRID)
+def FONT_GRID_H(): return fs(BASE_GRID_H)
 
 # ━━━━━━━ 配置持久化 ━━━━━━━
 def load_config():
@@ -372,39 +387,74 @@ class StatBar(QFrame):
         for icon, key, color in [("📊","total",C_TEXT),("✅","ok","#2E7D32"),("❌","err","#E53935"),("⚠️","warn","#FB8C00")]:
             name = {"total":"总行数","ok":"通过","err":"错误","warn":"警告"}[key]
             lbl = QLabel(f"{icon} {name}: —")
-            lbl.setStyleSheet(f"color: {color}; font-size: {FONT_H2}px; font-weight: bold; border: none;")
+            lbl.setStyleSheet(f"color: {color}; font-size: {FONT_H2()}px; font-weight: bold; border: none;")
             ly.addWidget(lbl)
             self.labels[key] = lbl
         ly.addStretch()
+
     def set_values(self, total="—", ok="—", err="—", warn="—"):
         self.labels["total"].setText(f"📊 总行数: {total}")
         self.labels["ok"].setText(f"✅ 通过: {ok}")
         self.labels["err"].setText(f"❌ 错误: {err}")
         self.labels["warn"].setText(f"⚠️ 警告: {warn}")
 
+    def refresh_style(self):
+        self.setFixedHeight(max(36, int(36 * _font_scale + 0.5)))
+        for key, lbl in self.labels.items():
+            color = {"total": C_TEXT, "ok": "#2E7D32", "err": "#E53935", "warn": "#FB8C00"}[key]
+            lbl.setStyleSheet(f"color: {color}; font-size: {FONT_H2()}px; font-weight: bold; border: none;")
+
 class DropArea(QLabel):
     file_dropped = pyqtSignal(str)
     def __init__(self, text="拖拽文件到此处"):
         super().__init__(text)
         self.setAcceptDrops(True); self.setAlignment(Qt.AlignCenter)
+        self._is_loaded = False
+        self._loaded_fn = ""
         self.setFixedHeight(60); self._idle()
+
     def _idle(self):
+        self._is_loaded = False
         self.setStyleSheet(f"""
             QLabel {{
                 border: 2px dashed {C_ACCENT}; border-radius: 8px;
                 color: {C_TEXT_SEC}; background: {C_PRIMARY_XL};
-                font-size: {FONT_BODY}px; padding: 4px;
+                font-size: {FONT_BODY()}px; padding: 4px;
             }}
         """)
+
     def _loaded(self, fn):
+        self._is_loaded = True
+        self._loaded_fn = fn
         self.setText(f"📄 {fn}")
         self.setStyleSheet(f"""
             QLabel {{
                 border: 2px solid {C_SUCCESS}; border-radius: 8px;
                 color: {C_SUCCESS}; background: #E8F5E9;
-                font-size: {FONT_BODY}px; font-weight: bold; padding: 4px;
+                font-size: {FONT_BODY()}px; font-weight: bold; padding: 4px;
             }}
         """)
+
+    def refresh_style(self):
+        h = max(40, int(52 * _font_scale + 0.5))
+        self.setFixedHeight(h)
+        if self._is_loaded:
+            self.setStyleSheet(f"""
+                QLabel {{
+                    border: 2px solid {C_SUCCESS}; border-radius: 8px;
+                    color: {C_SUCCESS}; background: #E8F5E9;
+                    font-size: {FONT_BODY()}px; font-weight: bold; padding: 4px;
+                }}
+            """)
+        else:
+            self.setStyleSheet(f"""
+                QLabel {{
+                    border: 2px dashed {C_ACCENT}; border-radius: 8px;
+                    color: {C_TEXT_SEC}; background: {C_PRIMARY_XL};
+                    font-size: {FONT_BODY()}px; padding: 4px;
+                }}
+            """)
+
     def dragEnterEvent(self, e):
         if e.mimeData().hasUrls(): e.acceptProposedAction()
     def dragLeaveEvent(self, e): self._idle()
@@ -426,7 +476,14 @@ class MainWindow(QMainWindow):
         self._init_ui(); self._load_saved()
 
     def _load_saved(self):
+        global _font_scale
         cfg = load_config()
+        # 读取字体缩放
+        scale = cfg.get("font_scale", 100)
+        _font_scale = max(0.8, min(2.0, scale / 100.0))
+        # 应用字体缩放
+        self._apply_all_styles()
+
         rp = cfg.get("rule_file", "")
         if rp and os.path.exists(rp):
             self.rule_file = rp; self.r_drop._loaded(os.path.basename(rp))
@@ -438,7 +495,7 @@ class MainWindow(QMainWindow):
             self.mapping_data = cached
             cnt = sum(len(v) for v in cached.values())
             self.m_info.setText(f"✅ 已加载 {len(cached)} 个科目 {cnt} 条规则")
-            self.m_info.setStyleSheet(f"color: {C_SUCCESS}; font-size: {FONT_SMALL}px;")
+            self.m_info.setStyleSheet(f"color: {C_SUCCESS}; font-size: {FONT_SMALL()}px;")
         bp = cfg.get("b_file", "")
         if bp and os.path.exists(bp):
             self.b_file = bp; self.b_drop._loaded(os.path.basename(bp))
@@ -450,7 +507,9 @@ class MainWindow(QMainWindow):
         if self.mapping_file: cfg["mapping_file"] = self.mapping_file
         save_config(cfg)
 
-    def _bs(self, color, sz=FONT_H2, px=20):
+    def _bs(self, color, sz=None, px=20):
+        if sz is None:
+            sz = FONT_H2()
         return f"""
             QPushButton {{
                 background: {color}; color: white; border-radius: 6px;
@@ -468,14 +527,21 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(f"""
             QMainWindow {{ background: {C_BG}; }}
             QGroupBox {{
-                font-weight: bold; font-size: {FONT_H2}px; color: {C_TEXT};
+                font-weight: bold; font-size: {FONT_H2()}px; color: {C_TEXT};
                 border: 1px solid {C_BORDER}; border-radius: 8px;
                 margin-top: 18px; padding-top: 28px; background: {C_CARD};
             }}
             QGroupBox::title {{ subcontrol-origin: margin; left: 18px; padding: 0 8px; }}
-            QStatusBar {{ background: #F0F0F0; color: {C_TEXT_SEC}; font-size: {FONT_SMALL}px; }}
+            QStatusBar {{ background: #F0F0F0; color: {C_TEXT_SEC}; font-size: {FONT_SMALL()}px; }}
         """)
-        QApplication.setFont(QFont(FONT_FAMILY, FONT_BODY))
+        QApplication.setFont(QFont(FONT_FAMILY, FONT_BODY()))
+
+        # ── 菜单栏 ──
+        menubar = self.menuBar()
+        font_menu = menubar.addMenu("字体(&T)")
+        font_action = QAction("字体大小设置...", self)
+        font_action.triggered.connect(self._show_font_dialog)
+        font_menu.addAction(font_action)
 
         central = QWidget(); self.setCentralWidget(central)
         root = QVBoxLayout(central)
@@ -490,11 +556,12 @@ class MainWindow(QMainWindow):
             }}
         """)
         hl = QHBoxLayout(hdr); hl.setContentsMargins(20, 0, 20, 0)
-        ht = QLabel(f"📋  {APP_NAME}")
-        ht.setStyleSheet(f"color: {C_TEXT}; font-size: {FONT_TITLE}px; font-weight: bold; background: transparent;")
-        hv = QLabel(VERSION)
-        hv.setStyleSheet(f"color: {C_TEXT_SEC}; font-size: {FONT_SMALL}px; background: transparent;")
-        hl.addWidget(ht); hl.addStretch(); hl.addWidget(hv)
+        self.hdr_title = QLabel(f"📋  {APP_NAME}")
+        self.hdr_title.setStyleSheet(f"color: {C_TEXT}; font-size: {FONT_TITLE()}px; font-weight: bold; background: transparent;")
+        self.hdr_version = QLabel(VERSION)
+        self.hdr_version.setStyleSheet(f"color: {C_TEXT_SEC}; font-size: {FONT_SMALL()}px; background: transparent;")
+        hl.addWidget(self.hdr_title); hl.addStretch(); hl.addWidget(self.hdr_version)
+        self.hdr_frame = hdr
         root.addWidget(hdr)
 
         # ── 页面切换 Tab ──
@@ -503,7 +570,7 @@ class MainWindow(QMainWindow):
             QTabBar::tab {{
                 background: {C_CARD}; border: 1px solid {C_BORDER}; border-bottom: none;
                 border-radius: 8px 8px 0 0; padding: 12px 32px;
-                margin-right: 4px; font-size: {FONT_H2}px; font-weight: bold; color: {C_TEXT_SEC};
+                margin-right: 4px; font-size: {FONT_H2()}px; font-weight: bold; color: {C_TEXT_SEC};
             }}
             QTabBar::tab:selected {{ background: {C_ACCENT}; color: white; }}
             QTabBar::tab:hover {{ background: #E8E8E8; }}
@@ -527,8 +594,10 @@ class MainWindow(QMainWindow):
         root = QVBoxLayout(page); root.setSpacing(12); root.setContentsMargins(0, 8, 0, 0)
 
         # 上传区
-        ub = QGroupBox("  文件上传（支持拖拽）")
-        ul = QVBoxLayout(ub); ul.setSpacing(10)
+        self.upload_box = QGroupBox("  文件上传（支持拖拽）")
+        ul = QVBoxLayout(self.upload_box); ul.setSpacing(10)
+        self.file_labels = []
+        self.file_choose_btns = []
         for lbl_text, attr, slot, drop_text in [
             ("📄 B表：", "b_drop", "_choose_b", "将B表拖到此处"),
             ("📋 校验规则表：", "r_drop", "_choose_rule", "将规则表拖到此处（记住路径）"),
@@ -536,20 +605,22 @@ class MainWindow(QMainWindow):
         ]:
             row = QHBoxLayout(); row.setSpacing(10)
             l = QLabel(lbl_text); l.setFixedWidth(130)
-            l.setStyleSheet(f"font-size: {FONT_BODY}px;")
+            l.setStyleSheet(f"font-size: {FONT_BODY()}px;")
+            self.file_labels.append(l)
             da = DropArea(drop_text); setattr(self, attr, da)
             b = QPushButton("选择"); b.setFixedWidth(80); b.setFixedHeight(42)
-            b.setStyleSheet(self._bs(C_PRIMARY, FONT_BODY, 12))
+            b.setStyleSheet(self._bs(C_PRIMARY, FONT_BODY(), 12))
             b.clicked.connect(getattr(self, slot))
+            self.file_choose_btns.append(b)
             if attr == 'b_drop': da.file_dropped.connect(self._on_b_drop)
             elif attr == 'r_drop': da.file_dropped.connect(self._on_r_drop)
             else: da.file_dropped.connect(self._on_m_drop)
             row.addWidget(l); row.addWidget(da, 1); row.addWidget(b)
             ul.addLayout(row)
         self.m_info = QLabel("")
-        self.m_info.setStyleSheet(f"color: {C_TEXT_SEC}; font-size: {FONT_SMALL}px;")
+        self.m_info.setStyleSheet(f"color: {C_TEXT_SEC}; font-size: {FONT_SMALL()}px;")
         ul.addWidget(self.m_info)
-        root.addWidget(ub)
+        root.addWidget(self.upload_box)
 
         # 按钮行
         brow = QHBoxLayout(); brow.setSpacing(12)
@@ -576,13 +647,14 @@ class MainWindow(QMainWindow):
         root.addWidget(self.stat_bar)
 
         # 结果区
-        rb2 = QGroupBox("  校验结果"); rl2 = QVBoxLayout(rb2); rl2.setSpacing(8)
+        self.result_box = QGroupBox("  校验结果")
+        rl2 = QVBoxLayout(self.result_box); rl2.setSpacing(8)
         self.tabs = QTabBar()
         self.tabs.setStyleSheet(f"""
             QTabBar::tab {{
                 background: {C_CARD}; border: 1px solid {C_BORDER}; border-bottom: none;
                 border-radius: 6px 6px 0 0; padding: 8px 20px;
-                margin-right: 2px; font-size: {FONT_BODY}px; color: {C_TEXT_SEC};
+                margin-right: 2px; font-size: {FONT_BODY()}px; color: {C_TEXT_SEC};
             }}
             QTabBar::tab:selected {{ background: {C_ACCENT}; color: white; font-weight: bold; }}
             QTabBar::tab:hover {{ background: #E8E8E8; }}
@@ -600,15 +672,15 @@ class MainWindow(QMainWindow):
         self.tbl.setAlternatingRowColors(True); self.tbl.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.tbl.verticalHeader().setDefaultSectionSize(36)
         self.tbl.setStyleSheet(f"""
-            QTableWidget {{ border: 1px solid {C_BORDER}; gridline-color: #E8E8E8; font-size: {FONT_BODY}px; }}
+            QTableWidget {{ border: 1px solid {C_BORDER}; gridline-color: #E8E8E8; font-size: {FONT_BODY()}px; }}
             QHeaderView::section {{
                 background: #F5F5F5; color: {C_TEXT}; font-weight: bold;
                 padding: 10px; border: none; border-bottom: 1px solid #D0D0D0;
-                font-size: {FONT_GRID_H}px;
+                font-size: {FONT_GRID_H()}px;
             }}
         """)
         rl2.addWidget(self.tbl)
-        root.addWidget(rb2, 1)
+        root.addWidget(self.result_box, 1)
         return page
 
     # ════════════════ 页面二：表格校验 ════════════════
@@ -617,15 +689,15 @@ class MainWindow(QMainWindow):
         root = QVBoxLayout(page); root.setSpacing(10); root.setContentsMargins(0, 8, 0, 0)
 
         # 提示信息
-        tip = QLabel("💡 从 Excel / SAP 中复制数据后，点击第4行任意单元格，按 Ctrl+V 粘贴（支持多行多列）")
-        tip.setStyleSheet(f"""
+        self.tip_label = QLabel("💡 从 Excel / SAP 中复制数据后，点击第4行任意单元格，按 Ctrl+V 粘贴（支持多行多列）")
+        self.tip_label.setStyleSheet(f"""
             QLabel {{
-                color: {C_ACCENT}; font-size: {FONT_BODY}px;
+                color: {C_ACCENT}; font-size: {FONT_BODY()}px;
                 background: #EEF1FF; padding: 10px 20px;
                 border-radius: 6px; border: 1px solid #D0D8FF;
             }}
         """)
-        root.addWidget(tip)
+        root.addWidget(self.tip_label)
 
         # 按钮栏
         brow = QHBoxLayout(); brow.setSpacing(10)
@@ -667,7 +739,7 @@ class MainWindow(QMainWindow):
                 item = QTableWidgetItem(str(v) if v is not None else "")
                 item.setBackground(QColor("#FFFFFF"))
                 item.setForeground(QColor("#5D4037") if r == 0 else QColor("#757575"))
-                item.setFont(QFont(FONT_FAMILY, FONT_GRID_H, QFont.Bold if r == 0 else QFont.Normal))
+                item.setFont(QFont(FONT_FAMILY, FONT_GRID_H(), QFont.Bold if r == 0 else QFont.Normal))
                 item.setFlags(Qt.ItemIsEnabled)
                 self.grid.setItem(r, c, item)
             # 错误说明列
@@ -680,12 +752,12 @@ class MainWindow(QMainWindow):
         self.grid.setStyleSheet(f"""
             QTableWidget {{
                 border: 1px solid {C_BORDER}; gridline-color: #E8E8E8;
-                font-size: {FONT_GRID}px;
+                font-size: {FONT_GRID()}px;
             }}
             QHeaderView::section {{
                 background: #F5F5F5; color: {C_TEXT}; font-weight: bold;
                 padding: 6px; border: none; border-bottom: 1px solid #D0D0D0;
-                font-size: {FONT_GRID_H}px;
+                font-size: {FONT_GRID_H()}px;
             }}
         """)
         self.grid.horizontalHeader().setDefaultSectionSize(100)
@@ -698,6 +770,212 @@ class MainWindow(QMainWindow):
         self.grid_errors = {}
         self.grid_result = None
         return page
+
+    # ════════════════ 字体缩放相关 ════════════════
+    def _show_font_dialog(self):
+        dlg = QDialog(self)
+        dlg.setWindowTitle("字体大小设置")
+        dlg.setFixedSize(420, 280)
+        layout = QVBoxLayout(dlg)
+        layout.setSpacing(12)
+
+        # 当前值标签
+        current_val = int(_font_scale * 100)
+        val_label = QLabel(f"当前：{current_val}%")
+        val_label.setAlignment(Qt.AlignCenter)
+        val_label.setStyleSheet(f"font-size: {FONT_H2()}px; font-weight: bold; color: {C_TEXT};")
+        layout.addWidget(val_label)
+
+        # 滑块行
+        slider_row = QHBoxLayout()
+        min_label = QLabel("80%")
+        min_label.setStyleSheet(f"font-size: {FONT_SMALL()}px; color: {C_TEXT_SEC};")
+        max_label = QLabel("200%")
+        max_label.setStyleSheet(f"font-size: {FONT_SMALL()}px; color: {C_TEXT_SEC};")
+        slider = QSlider(Qt.Horizontal)
+        slider.setRange(80, 200)
+        slider.setSingleStep(10)
+        slider.setPageStep(10)
+        slider.setValue(current_val)
+        slider_row.addWidget(min_label)
+        slider_row.addWidget(slider, 1)
+        slider_row.addWidget(max_label)
+        layout.addLayout(slider_row)
+
+        # 预览标签
+        preview = QLabel("这是预览文字 ABC 123")
+        preview.setAlignment(Qt.AlignCenter)
+        preview.setStyleSheet(f"""
+            QLabel {{
+                font-size: {fs(BASE_BODY)}px; color: {C_TEXT};
+                background: {C_PRIMARY_XL}; border: 1px solid {C_BORDER};
+                border-radius: 6px; padding: 12px;
+            }}
+        """)
+        layout.addWidget(preview)
+
+        # 滑块变化时更新
+        def on_slider_change(val):
+            # snap to nearest 10
+            snapped = round(val / 10) * 10
+            if slider.value() != snapped:
+                slider.setValue(snapped)
+                return
+            val_label.setText(f"当前：{snapped}%")
+            preview_size = max(8, int(BASE_BODY * snapped / 100.0 + 0.5))
+            preview.setStyleSheet(f"""
+                QLabel {{
+                    font-size: {preview_size}px; color: {C_TEXT};
+                    background: {C_PRIMARY_XL}; border: 1px solid {C_BORDER};
+                    border-radius: 6px; padding: 12px;
+                }}
+            """)
+        slider.valueChanged.connect(on_slider_change)
+
+        # 按钮
+        btn_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btn_box.button(QDialogButtonBox.Ok).setText("确定")
+        btn_box.button(QDialogButtonBox.Cancel).setText("取消")
+        btn_box.accepted.connect(dlg.accept)
+        btn_box.rejected.connect(dlg.reject)
+        layout.addWidget(btn_box)
+
+        if dlg.exec_() == QDialog.Accepted:
+            global _font_scale
+            new_scale = round(slider.value() / 10) * 10
+            _font_scale = new_scale / 100.0
+            self._apply_all_styles()
+            # 保存到配置
+            cfg = load_config()
+            cfg["font_scale"] = int(_font_scale * 100)
+            save_config(cfg)
+
+    def _apply_all_styles(self):
+        """重新应用所有样式表（字体缩放后调用）"""
+        # 全局字体
+        QApplication.setFont(QFont(FONT_FAMILY, FONT_BODY()))
+
+        # QMainWindow 全局样式
+        self.setStyleSheet(f"""
+            QMainWindow {{ background: {C_BG}; }}
+            QGroupBox {{
+                font-weight: bold; font-size: {FONT_H2()}px; color: {C_TEXT};
+                border: 1px solid {C_BORDER}; border-radius: 8px;
+                margin-top: 18px; padding-top: 28px; background: {C_CARD};
+            }}
+            QGroupBox::title {{ subcontrol-origin: margin; left: 18px; padding: 0 8px; }}
+            QStatusBar {{ background: #F0F0F0; color: {C_TEXT_SEC}; font-size: {FONT_SMALL()}px; }}
+        """)
+
+        # 标题栏
+        hdr_h = max(40, int(40 * _font_scale + 0.5))
+        self.hdr_frame.setFixedHeight(hdr_h)
+        self.hdr_title.setStyleSheet(f"color: {C_TEXT}; font-size: {FONT_TITLE()}px; font-weight: bold; background: transparent;")
+        self.hdr_version.setStyleSheet(f"color: {C_TEXT_SEC}; font-size: {FONT_SMALL()}px; background: transparent;")
+
+        # 页面Tab
+        self.page_tab.setStyleSheet(f"""
+            QTabBar::tab {{
+                background: {C_CARD}; border: 1px solid {C_BORDER}; border-bottom: none;
+                border-radius: 8px 8px 0 0; padding: 12px 32px;
+                margin-right: 4px; font-size: {FONT_H2()}px; font-weight: bold; color: {C_TEXT_SEC};
+            }}
+            QTabBar::tab:selected {{ background: {C_ACCENT}; color: white; }}
+            QTabBar::tab:hover {{ background: #E8E8E8; }}
+        """)
+
+        # 统计栏
+        self.stat_bar.refresh_style()
+        self.g_stat.refresh_style()
+
+        # 拖拽区
+        for da in [self.b_drop, self.r_drop, self.m_drop]:
+            da.refresh_style()
+
+        # 文件上传区标签
+        for l in self.file_labels:
+            l.setStyleSheet(f"font-size: {FONT_BODY()}px;")
+
+        # 文件选择按钮
+        btn_h = max(36, int(42 * _font_scale + 0.5))
+        for b in self.file_choose_btns:
+            b.setFixedHeight(btn_h)
+            b.setStyleSheet(self._bs(C_PRIMARY, FONT_BODY(), 12))
+
+        # mapping 信息标签
+        if self.m_info.text():
+            if "✅" in self.m_info.text():
+                self.m_info.setStyleSheet(f"color: {C_SUCCESS}; font-size: {FONT_SMALL()}px;")
+            else:
+                self.m_info.setStyleSheet(f"color: {C_TEXT_SEC}; font-size: {FONT_SMALL()}px;")
+
+        # 校验/下载按钮（文件校验页）
+        main_btn_h = max(36, int(42 * _font_scale + 0.5))
+        self.vbtn.setFixedHeight(main_btn_h); self.vbtn.setStyleSheet(self._bs(C_SUCCESS))
+        self.dbtn.setFixedHeight(main_btn_h); self.dbtn.setStyleSheet(self._bs(C_PRIMARY))
+
+        # 结果 Tab
+        self.tabs.setStyleSheet(f"""
+            QTabBar::tab {{
+                background: {C_CARD}; border: 1px solid {C_BORDER}; border-bottom: none;
+                border-radius: 6px 6px 0 0; padding: 8px 20px;
+                margin-right: 2px; font-size: {FONT_BODY()}px; color: {C_TEXT_SEC};
+            }}
+            QTabBar::tab:selected {{ background: {C_ACCENT}; color: white; font-weight: bold; }}
+            QTabBar::tab:hover {{ background: #E8E8E8; }}
+        """)
+
+        # 结果表格
+        row_h = max(24, int(28 * _font_scale + 0.5))
+        self.tbl.verticalHeader().setDefaultSectionSize(row_h)
+        self.tbl.setStyleSheet(f"""
+            QTableWidget {{ border: 1px solid {C_BORDER}; gridline-color: #E8E8E8; font-size: {FONT_BODY()}px; }}
+            QHeaderView::section {{
+                background: #F5F5F5; color: {C_TEXT}; font-weight: bold;
+                padding: 10px; border: none; border-bottom: 1px solid #D0D0D0;
+                font-size: {FONT_GRID_H()}px;
+            }}
+        """)
+
+        # 提示信息
+        self.tip_label.setStyleSheet(f"""
+            QLabel {{
+                color: {C_ACCENT}; font-size: {FONT_BODY()}px;
+                background: #EEF1FF; padding: 10px 20px;
+                border-radius: 6px; border: 1px solid #D0D8FF;
+            }}
+        """)
+
+        # 表格校验页按钮
+        self.g_vbtn.setFixedHeight(main_btn_h); self.g_vbtn.setStyleSheet(self._bs(C_SUCCESS))
+        self.g_clr.setFixedHeight(main_btn_h); self.g_clr.setStyleSheet(self._bs("#757575"))
+        self.g_dl.setFixedHeight(main_btn_h); self.g_dl.setStyleSheet(self._bs(C_PRIMARY))
+
+        # grid 表格
+        grid_row_h = max(24, int(28 * _font_scale + 0.5))
+        grid_col_w = max(80, int(88 * _font_scale + 0.5))
+        grid_err_w = max(240, int(280 * _font_scale + 0.5))
+        self.grid.verticalHeader().setDefaultSectionSize(grid_row_h)
+        self.grid.horizontalHeader().setDefaultSectionSize(grid_col_w)
+        self.grid.setColumnWidth(NUM_COLS, grid_err_w)
+        self.grid.setStyleSheet(f"""
+            QTableWidget {{
+                border: 1px solid {C_BORDER}; gridline-color: #E8E8E8;
+                font-size: {FONT_GRID()}px;
+            }}
+            QHeaderView::section {{
+                background: #F5F5F5; color: {C_TEXT}; font-weight: bold;
+                padding: 6px; border: none; border-bottom: 1px solid #D0D0D0;
+                font-size: {FONT_GRID_H()}px;
+            }}
+        """)
+
+        # 更新 grid 表头行字体
+        for r in range(3):
+            for c in range(NUM_COLS):
+                item = self.grid.item(r, c)
+                if item:
+                    item.setFont(QFont(FONT_FAMILY, FONT_GRID_H(), QFont.Bold if r == 0 else QFont.Normal))
 
     def _grid_cell_hover(self, row, col):
         if col < NUM_COLS:
@@ -850,7 +1128,7 @@ class MainWindow(QMainWindow):
             self.m_drop._loaded(os.path.basename(path))
             cnt = sum(len(v) for v in data.values())
             self.m_info.setText(f"✅ 已加载并缓存：{len(data)} 个科目 {cnt} 条规则")
-            self.m_info.setStyleSheet(f"color: {C_SUCCESS}; font-size: {FONT_SMALL}px;")
+            self.m_info.setStyleSheet(f"color: {C_SUCCESS}; font-size: {FONT_SMALL()}px;")
         except Exception as ex:
             QMessageBox.critical(self, "加载失败", str(ex))
 
