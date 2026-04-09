@@ -24,7 +24,7 @@ from openpyxl.styles import PatternFill, Font as XlFont, Alignment, Border, Side
 from openpyxl.utils import get_column_letter, column_index_from_string
 
 # ━━━━━━━ 常量 ━━━━━━━
-APP_NAME="SAP凭证校验工具"; VERSION="v2.3"; DATA_ROW=4
+APP_NAME="SAP凭证校验工具"; VERSION="v2.4"; DATA_ROW=4
 CONFIG_FILE=os.path.join(os.path.expanduser("~"),".sap_validate_config.json")
 CACHE_FILE=os.path.join(os.path.expanduser("~"),".sap_validate_cache.json")
 
@@ -41,9 +41,9 @@ FORBIDDEN_COLS_NON6=[
 A_IDX=0; B_IDX=1; J_IDX=column_index_from_string('J')-1; M_IDX=column_index_from_string('M')-1
 O_IDX=column_index_from_string('O')-1; AK_IDX=column_index_from_string('AK')-1; AL_IDX=column_index_from_string('AL')-1
 
-C_PRIMARY='#E65100';C_PRIMARY_L='#FF6D00';C_PRIMARY_XL='#FFF3E0'
-C_ACCENT='#FF9100';C_BG='#FAFAFA';C_CARD='#FFFFFF'
-C_TEXT='#212121';C_TEXT_SEC='#757575';C_SUCCESS='#2E7D32';C_ERROR='#C62828';C_WARN='#E65100';C_BORDER='#E0E0E0'
+C_PRIMARY='#424242';C_PRIMARY_L='#616161';C_PRIMARY_XL='#F5F5F5'
+C_ACCENT='#5C7CFA';C_BG='#FAFAFA';C_CARD='#FFFFFF'
+C_TEXT='#212121';C_TEXT_SEC='#757575';C_SUCCESS='#51CF66';C_ERROR='#E53935';C_WARN='#FB8C00';C_BORDER='#E0E0E0'
 
 HEADER_ROW1=['凭证序号','公司代码','凭证类型','凭证日期','过账日期','货币','汇率','凭证抬头文本','参照','记帐代码','屏幕科目','特别总帐标识','总账科目','事物类型','凭证货币金额','本币金额','成本中心编号','订单号','基准日期','参考','分配','项目文本','反记账标识','利润中心','数量','单位','付款条件','冻结付款','功能范围','现金流量码','贸易伙伴','客户','供应商','生产（物料）','流量类型','渠道','一级费用','二级费用','城市','项目','销售部门','产品','提报人','提报部门','报销人','销售大区','销售员','银行流水号','物料','OA单据号','销售合同号']
 HEADER_ROW2=['LINEID','BUKRS','BLART','BLDAT','BUDAT','WAERS','KURSF','BKTXT','XBLNR','BSCHL','NEWKO','UMSKZ','HKONT','BEWAR','WRBTR','DMBTR','KOSTL','AUFNR','ZFBDT','XREF1','ZUONR','SGTXT','XNEGP','PRCTR','MENGE','MEINS','ZTERM','ZLSPR','FKBER','ZZCASHFLOW','RASSC','KUNNR','WWVEN','artnr','WWLL','WWOFR','WWFY1','WWFY2','WWCS','WWXM','WWXSB','WWPRC','WWTBR','WWTBM','WWBXR','WWXSQ','WWXSY','XREF3','MATNR','XREF1_HD','XREF2_HD']
@@ -53,11 +53,11 @@ COL_LETTERS=[get_column_letter(i+1) for i in range(NUM_COLS)]
 
 # ━━━━━━━ 字体体系 ━━━━━━━
 FONT_FAMILY = "微软雅黑"
-FONT_TITLE  = 16  # 标题
-FONT_H2     = 13  # 二级标题/按钮
+FONT_TITLE  = 14  # 标题
+FONT_H2     = 12  # 二级标题/按钮
 FONT_BODY   = 11  # 正文
 FONT_SMALL  = 10  # 辅助信息
-FONT_GRID   = 10  # 表格
+FONT_GRID   = 10  # 表格（表头+数据统一）
 
 # ━━━━━━━ 配置持久化 ━━━━━━━
 def load_config():
@@ -355,30 +355,31 @@ class PasteableTable(QTableWidget):
         self.viewport().update()
 
 # ━━━━━━━ 自定义控件 ━━━━━━━
-class StatCard(QFrame):
-    def __init__(self, icon, title, value="—", color="#333"):
+class StatBar(QFrame):
+    """一行式统计栏"""
+    def __init__(self):
         super().__init__()
-        self.setFixedHeight(82)
+        self.setFixedHeight(36)
         self.setStyleSheet(f"""
-            StatCard {{
-                background: white; border-radius: 10px;
-                border: 1px solid {C_BORDER};
+            StatBar {{
+                background: {C_CARD}; border-radius: 6px;
+                border: 1px solid {C_BORDER}; padding: 0 12px;
             }}
         """)
-        sh = QGraphicsDropShadowEffect()
-        sh.setBlurRadius(12); sh.setOffset(0, 2); sh.setColor(QColor(0,0,0,25))
-        self.setGraphicsEffect(sh)
-        ly = QVBoxLayout(self)
-        ly.setContentsMargins(16, 10, 16, 10)
-        ly.setSpacing(4)
-        top = QLabel(f"{icon}  {title}")
-        top.setStyleSheet(f"color: {C_TEXT_SEC}; font-size: {FONT_SMALL}px; border: none;")
-        ly.addWidget(top)
-        self.vl = QLabel(str(value))
-        self.vl.setStyleSheet(f"color: {color}; font-size: 22px; font-weight: bold; border: none;")
-        ly.addWidget(self.vl)
-    def set_value(self, v):
-        self.vl.setText(str(v))
+        ly = QHBoxLayout(self); ly.setContentsMargins(16, 0, 16, 0); ly.setSpacing(24)
+        self.labels = {}
+        for icon, key, color in [("📊","total",C_TEXT),("✅","ok","#2E7D32"),("❌","err","#E53935"),("⚠️","warn","#FB8C00")]:
+            name = {"total":"总行数","ok":"通过","err":"错误","warn":"警告"}[key]
+            lbl = QLabel(f"{icon} {name}: —")
+            lbl.setStyleSheet(f"color: {color}; font-size: {FONT_BODY}px; font-weight: bold; border: none;")
+            ly.addWidget(lbl)
+            self.labels[key] = lbl
+        ly.addStretch()
+    def set_values(self, total="—", ok="—", err="—", warn="—"):
+        self.labels["total"].setText(f"📊 总行数: {total}")
+        self.labels["ok"].setText(f"✅ 通过: {ok}")
+        self.labels["err"].setText(f"❌ 错误: {err}")
+        self.labels["warn"].setText(f"⚠️ 警告: {warn}")
 
 class DropArea(QLabel):
     file_dropped = pyqtSignal(str)
@@ -480,19 +481,18 @@ class MainWindow(QMainWindow):
         root.setSpacing(12); root.setContentsMargins(20, 14, 20, 14)
 
         # ── 标题栏 ──
-        hdr = QFrame(); hdr.setFixedHeight(52)
+        hdr = QFrame(); hdr.setFixedHeight(40)
         hdr.setStyleSheet(f"""
             QFrame {{
-                background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
-                    stop:0 {C_PRIMARY}, stop:1 {C_PRIMARY_L});
-                border-radius: 10px;
+                background: {C_CARD}; border-radius: 8px;
+                border: 1px solid {C_BORDER};
             }}
         """)
-        hl = QHBoxLayout(hdr); hl.setContentsMargins(24, 0, 24, 0)
+        hl = QHBoxLayout(hdr); hl.setContentsMargins(20, 0, 20, 0)
         ht = QLabel(f"📋  {APP_NAME}")
-        ht.setStyleSheet(f"color: white; font-size: {FONT_TITLE}px; font-weight: bold; background: transparent;")
+        ht.setStyleSheet(f"color: {C_TEXT}; font-size: {FONT_TITLE}px; font-weight: bold; background: transparent;")
         hv = QLabel(VERSION)
-        hv.setStyleSheet(f"color: rgba(255,255,255,0.7); font-size: {FONT_BODY}px; background: transparent;")
+        hv.setStyleSheet(f"color: {C_TEXT_SEC}; font-size: {FONT_SMALL}px; background: transparent;")
         hl.addWidget(ht); hl.addStretch(); hl.addWidget(hv)
         root.addWidget(hdr)
 
@@ -502,10 +502,10 @@ class MainWindow(QMainWindow):
             QTabBar::tab {{
                 background: {C_CARD}; border: 1px solid {C_BORDER}; border-bottom: none;
                 border-radius: 8px 8px 0 0; padding: 10px 28px;
-                margin-right: 4px; font-size: {FONT_H2}px; font-weight: bold;
+                margin-right: 4px; font-size: {FONT_H2}px; font-weight: bold; color: {C_TEXT_SEC};
             }}
-            QTabBar::tab:selected {{ background: {C_PRIMARY}; color: white; }}
-            QTabBar::tab:hover {{ background: {C_PRIMARY_XL}; }}
+            QTabBar::tab:selected {{ background: {C_ACCENT}; color: white; }}
+            QTabBar::tab:hover {{ background: #E8E8E8; }}
         """)
         self.page_tab.addTab("📄  文件校验")
         self.page_tab.addTab("📋  表格校验")
@@ -570,14 +570,9 @@ class MainWindow(QMainWindow):
         """)
         root.addWidget(self.prog)
 
-        # 统计卡片
-        sr = QHBoxLayout(); sr.setSpacing(12)
-        self.ct = StatCard("📊", "总行数", "—", C_TEXT)
-        self.co = StatCard("✅", "通过", "—", C_SUCCESS)
-        self.ce = StatCard("❌", "错误", "—", C_ERROR)
-        self.cw = StatCard("⚠️", "警告", "—", C_WARN)
-        for c in [self.ct, self.co, self.ce, self.cw]: sr.addWidget(c)
-        root.addLayout(sr)
+        # 统计栏
+        self.stat_bar = StatBar()
+        root.addWidget(self.stat_bar)
 
         # 结果区
         rb2 = QGroupBox("  校验结果"); rl2 = QVBoxLayout(rb2); rl2.setSpacing(8)
@@ -586,10 +581,10 @@ class MainWindow(QMainWindow):
             QTabBar::tab {{
                 background: {C_CARD}; border: 1px solid {C_BORDER}; border-bottom: none;
                 border-radius: 6px 6px 0 0; padding: 6px 16px;
-                margin-right: 2px; font-size: {FONT_BODY}px;
+                margin-right: 2px; font-size: {FONT_BODY}px; color: {C_TEXT_SEC};
             }}
-            QTabBar::tab:selected {{ background: {C_PRIMARY}; color: white; font-weight: bold; }}
-            QTabBar::tab:hover {{ background: {C_PRIMARY_XL}; }}
+            QTabBar::tab:selected {{ background: {C_ACCENT}; color: white; font-weight: bold; }}
+            QTabBar::tab:hover {{ background: #E8E8E8; }}
         """)
         for t in ["全部", "必输项", "借贷平衡", "记账码", "禁填字段", "费用类别", "⚠️ 警告"]:
             self.tabs.addTab(t)
@@ -604,12 +599,12 @@ class MainWindow(QMainWindow):
         self.tbl.setAlternatingRowColors(True); self.tbl.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.tbl.verticalHeader().setDefaultSectionSize(28)
         self.tbl.setStyleSheet(f"""
-            QTableWidget {{ border: 1px solid {C_BORDER}; gridline-color: #eee; font-size: {FONT_BODY}px; }}
+            QTableWidget {{ border: 1px solid {C_BORDER}; gridline-color: #E8E8E8; font-size: {FONT_BODY}px; }}
             QHeaderView::section {{
-                background: {C_PRIMARY}; color: white; font-weight: bold;
-                padding: 8px; border: none; font-size: {FONT_BODY}px;
+                background: #F5F5F5; color: {C_TEXT}; font-weight: bold;
+                padding: 8px; border: none; border-bottom: 1px solid #D0D0D0;
+                font-size: {FONT_BODY}px;
             }}
-            QTableWidget::item:alternate {{ background: #FFF8F0; }}
         """)
         rl2.addWidget(self.tbl)
         root.addWidget(rb2, 1)
@@ -624,9 +619,9 @@ class MainWindow(QMainWindow):
         tip = QLabel("💡 从 Excel / SAP 中复制数据后，点击第4行任意单元格，按 Ctrl+V 粘贴（支持多行多列）")
         tip.setStyleSheet(f"""
             QLabel {{
-                color: {C_PRIMARY}; font-size: {FONT_BODY}px; font-weight: bold;
-                background: {C_PRIMARY_XL}; padding: 10px 16px;
-                border-radius: 6px; border: 1px solid {C_ACCENT};
+                color: {C_ACCENT}; font-size: {FONT_BODY}px;
+                background: #EEF1FF; padding: 8px 16px;
+                border-radius: 6px; border: 1px solid #D0D8FF;
             }}
         """)
         root.addWidget(tip)
@@ -655,12 +650,8 @@ class MainWindow(QMainWindow):
         root.addWidget(self.g_prog)
 
         sr = QHBoxLayout(); sr.setSpacing(12)
-        self.g_ct = StatCard("📊", "总行数", "—", C_TEXT)
-        self.g_co = StatCard("✅", "通过", "—", C_SUCCESS)
-        self.g_ce = StatCard("❌", "错误", "—", C_ERROR)
-        self.g_cw = StatCard("⚠️", "警告", "—", C_WARN)
-        for c in [self.g_ct, self.g_co, self.g_ce, self.g_cw]: sr.addWidget(c)
-        root.addLayout(sr)
+        self.g_stat = StatBar()
+        root.addWidget(self.g_stat)
 
         # 大表格（使用支持粘贴的自定义控件）
         nc = NUM_COLS + 1
@@ -673,30 +664,32 @@ class MainWindow(QMainWindow):
         for r, hrow in enumerate([HEADER_ROW1, HEADER_ROW2, HEADER_ROW3]):
             for c, v in enumerate(hrow):
                 item = QTableWidgetItem(str(v) if v is not None else "")
-                item.setBackground(QColor("#D0D0D0") if r == 0 else QColor("#E8E8E8"))
+                item.setBackground(QColor("#FFFFFF"))
+                item.setForeground(QColor("#5D4037") if r == 0 else QColor("#757575"))
                 item.setFont(QFont(FONT_FAMILY, FONT_GRID, QFont.Bold if r == 0 else QFont.Normal))
                 item.setFlags(Qt.ItemIsEnabled)
                 self.grid.setItem(r, c, item)
             # 错误说明列
             item = QTableWidgetItem(["错误说明", "VALIDATE_MSG", ""][r])
-            item.setBackground(QColor("#D0D0D0") if r == 0 else QColor("#E8E8E8"))
+            item.setBackground(QColor("#FFFFFF"))
+            item.setForeground(QColor("#5D4037") if r == 0 else QColor("#757575"))
             item.setFlags(Qt.ItemIsEnabled)
             self.grid.setItem(r, NUM_COLS, item)
 
         self.grid.setStyleSheet(f"""
             QTableWidget {{
-                border: 1px solid {C_BORDER}; gridline-color: #ddd;
+                border: 1px solid {C_BORDER}; gridline-color: #E8E8E8;
                 font-size: {FONT_GRID}px;
             }}
             QHeaderView::section {{
-                background: {C_PRIMARY}; color: white; font-weight: bold;
-                padding: 4px; border: none; font-size: {FONT_SMALL}px;
+                background: #F5F5F5; color: {C_TEXT}; font-weight: bold;
+                padding: 4px; border: none; border-bottom: 1px solid #D0D0D0;
+                font-size: {FONT_SMALL}px;
             }}
         """)
         self.grid.horizontalHeader().setDefaultSectionSize(88)
         self.grid.setColumnWidth(NUM_COLS, 280)
-        self.grid.verticalHeader().setDefaultSectionSize(26)
-        self.grid.setAlternatingRowColors(True)
+        self.grid.verticalHeader().setDefaultSectionSize(24)
         self.grid.setMouseTracking(True)
         self.grid.cellEntered.connect(self._grid_cell_hover)
         root.addWidget(self.grid, 1)
@@ -723,7 +716,7 @@ class MainWindow(QMainWindow):
                 else:
                     self.grid.setItem(r, c, QTableWidgetItem(""))
         self.grid_errors = {}; self.grid_result = None; self.g_dl.setEnabled(False)
-        for c in [self.g_ct, self.g_co, self.g_ce, self.g_cw]: c.set_value("—")
+        self.g_stat.set_values()
 
     def _grid_validate(self):
         if not self.rule_file:
@@ -754,8 +747,7 @@ class MainWindow(QMainWindow):
         errors = result["errors"]; warnings = result["warnings"]; total = result["total"]
         ec = len(errors); wc = len([w for w in warnings if w[2] == '科目不在规则表'])
         ok = max(0, total - ec - wc)
-        self.g_ct.set_value(total); self.g_co.set_value(ok)
-        self.g_ce.set_value(ec); self.g_cw.set_value(wc)
+        self.g_stat.set_values(total, ok, ec, wc)
 
         # 清除之前标色
         self.grid_errors = {}
@@ -866,7 +858,7 @@ class MainWindow(QMainWindow):
         if not self.rule_file: QMessageBox.warning(self, "提示", "请先上传校验规则表！"); return
         self.vbtn.setEnabled(False); self.dbtn.setEnabled(False)
         self.prog.setValue(0); self.tbl.setRowCount(0)
-        for c in [self.ct, self.co, self.ce, self.cw]: c.set_value("...")
+        self.stat_bar.set_values("...", "...", "...", "...")
         self.worker = ValidateWorker(self.b_file, self.rule_file, self.mapping_data)
         self.worker.progress.connect(self.prog.setValue)
         self.worker.finished.connect(self._done)
@@ -878,7 +870,7 @@ class MainWindow(QMainWindow):
         errs = result["errors"]; warns = result["warnings"]; total = result["total"]
         ec = len(errs); wc = len([w for w in warns if w[2] == '科目不在规则表'])
         ok = max(0, total - ec - wc)
-        self.ct.set_value(total); self.co.set_value(ok); self.ce.set_value(ec); self.cw.set_value(wc)
+        self.stat_bar.set_values(total, ok, ec, wc)
         self.all_table_rows = []
         for r in sorted(errs.keys()):
             for et, cols, msg in errs[r]:
