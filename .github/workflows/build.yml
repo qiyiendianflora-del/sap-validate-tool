@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -35,6 +38,6 @@ jobs:
           tag_name: v${{ github.run_number }}
           name: "SAP凭证校验工具 Build #${{ github.run_number }}"
           files: dist/SAP凭证校验工具.exe
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          generate_release_notes: false
+        permissions:
+          contents: write
