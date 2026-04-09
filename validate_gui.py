@@ -773,6 +773,7 @@ class MainWindow(QMainWindow):
 
     # ════════════════ 字体缩放相关 ════════════════
     def _show_font_dialog(self):
+        global _font_scale
         dlg = QDialog(self)
         dlg.setWindowTitle("字体大小设置")
         dlg.setFixedSize(420, 280)
@@ -841,7 +842,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(btn_box)
 
         if dlg.exec_() == QDialog.Accepted:
-            global _font_scale
             new_scale = round(slider.value() / 10) * 10
             _font_scale = new_scale / 100.0
             self._apply_all_styles()
