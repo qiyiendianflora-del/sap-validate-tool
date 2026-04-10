@@ -25,7 +25,7 @@ from openpyxl.styles import PatternFill, Font as XlFont, Alignment, Border, Side
 from openpyxl.utils import get_column_letter, column_index_from_string
 
 # ━━━━━━━ 常量 ━━━━━━━
-APP_NAME="SAP凭证校验工具"; VERSION="v3.7"; DATA_ROW=4
+APP_NAME="SAP凭证校验工具"; VERSION="v3.8"; DATA_ROW=4
 CONFIG_FILE=os.path.join(os.path.expanduser("~"),".sap_validate_config.json")
 CACHE_FILE=os.path.join(os.path.expanduser("~"),".sap_validate_cache.json")
 CACHE_DIR=os.path.join(os.path.expanduser("~"),".sap_validate_files")
@@ -1087,7 +1087,7 @@ class MainWindow(QMainWindow):
                 border-radius: 6px;
                 padding: 6px 14px;
                 margin-right: 4px;
-                font-size: {FONT_SMALL()}px;
+                font-size: {FONT_GRID_H()}px;
                 font-weight: 500;
                 color: {C_TEXT_SEC};
             }}
