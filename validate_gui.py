@@ -25,7 +25,7 @@ from openpyxl.styles import PatternFill, Font as XlFont, Alignment, Border, Side
 from openpyxl.utils import get_column_letter, column_index_from_string
 
 # ━━━━━━━ 常量 ━━━━━━━
-APP_NAME="SAP凭证校验工具"; VERSION="v3.6"; DATA_ROW=4
+APP_NAME="SAP凭证校验工具"; VERSION="v3.7"; DATA_ROW=4
 CONFIG_FILE=os.path.join(os.path.expanduser("~"),".sap_validate_config.json")
 CACHE_FILE=os.path.join(os.path.expanduser("~"),".sap_validate_cache.json")
 CACHE_DIR=os.path.join(os.path.expanduser("~"),".sap_validate_files")
@@ -78,7 +78,7 @@ BASE_H2     = 13
 BASE_BODY   = 12
 BASE_SMALL  = 8
 BASE_GRID   = 9
-BASE_GRID_H = 10
+BASE_GRID_H = 17
 BASE_BTN    = 12
 BASE_STAT_NUM = 22
 
@@ -1120,7 +1120,7 @@ class MainWindow(QMainWindow):
                 padding: 10px 16px;
                 border: none;
                 border-bottom: 1px solid {C_BORDER};
-                font-size: {FONT_BODY()}px;
+                font-size: {FONT_GRID_H()}px;
             }}
             QTableWidget::item {{
                 padding: 10px 16px;
