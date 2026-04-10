@@ -25,7 +25,7 @@ from openpyxl.styles import PatternFill, Font as XlFont, Alignment, Border, Side
 from openpyxl.utils import get_column_letter, column_index_from_string
 
 # ━━━━━━━ 常量 ━━━━━━━
-APP_NAME="SAP凭证校验工具"; VERSION="v3.1"; DATA_ROW=4
+APP_NAME="SAP凭证校验工具"; VERSION="v3.2"; DATA_ROW=4
 CONFIG_FILE=os.path.join(os.path.expanduser("~"),".sap_validate_config.json")
 CACHE_FILE=os.path.join(os.path.expanduser("~"),".sap_validate_cache.json")
 CACHE_DIR=os.path.join(os.path.expanduser("~"),".sap_validate_files")
@@ -1220,15 +1220,15 @@ class MainWindow(QMainWindow):
             if r == 0:
                 item.setBackground(QColor("#FFFFFF"))
                 item.setForeground(QColor("#8B2500"))
-                item.setFont(QFont(FONT_FAMILY, FONT_BODY(), QFont.Bold))
+                item.setFont(QFont(FONT_FAMILY, FONT_SMALL(), QFont.Bold))
             elif r == 1:
                 item.setBackground(QColor("#FAFAF8"))
                 item.setForeground(QColor("#A0522D"))
-                item.setFont(QFont(FONT_FAMILY, fs(10)))
+                item.setFont(QFont(FONT_FAMILY, FONT_SMALL()))
             else:
                 item.setBackground(QColor("#FAFAF8"))
                 item.setForeground(QColor("#A8A29E"))
-                item.setFont(QFont(FONT_FAMILY, fs(10)))
+                item.setFont(QFont(FONT_FAMILY, FONT_SMALL()))
             item.setFlags(Qt.ItemIsEnabled)
             item.setTextAlignment(Qt.AlignCenter)
             self.grid.setItem(r, RESULT_COL, item)
@@ -1238,15 +1238,15 @@ class MainWindow(QMainWindow):
                 if r == 0:
                     item.setBackground(QColor("#FFFFFF"))
                     item.setForeground(QColor("#8B2500"))
-                    item.setFont(QFont(FONT_FAMILY, FONT_BODY(), QFont.Bold))
+                    item.setFont(QFont(FONT_FAMILY, FONT_SMALL(), QFont.Bold))
                 elif r == 1:
                     item.setBackground(QColor("#FAFAF8"))
                     item.setForeground(QColor("#A0522D"))
-                    item.setFont(QFont(FONT_FAMILY, fs(10)))
+                    item.setFont(QFont(FONT_FAMILY, FONT_SMALL()))
                 else:
                     item.setBackground(QColor("#FAFAF8"))
                     item.setForeground(QColor("#A8A29E"))
-                    item.setFont(QFont(FONT_FAMILY, fs(10)))
+                    item.setFont(QFont(FONT_FAMILY, FONT_SMALL()))
                 item.setFlags(Qt.ItemIsEnabled)
                 item.setTextAlignment(Qt.AlignCenter)
                 self.grid.setItem(r, c + DATA_COL_OFFSET, item)
@@ -1523,11 +1523,11 @@ class MainWindow(QMainWindow):
                 item = self.grid.item(r, c)
                 if item:
                     if r == 0:
-                        item.setFont(QFont(FONT_FAMILY, FONT_BODY(), QFont.Bold))
+                        item.setFont(QFont(FONT_FAMILY, FONT_SMALL(), QFont.Bold))
                     elif r == 1:
-                        item.setFont(QFont(FONT_FAMILY, fs(10)))
+                        item.setFont(QFont(FONT_FAMILY, FONT_SMALL()))
                     else:
-                        item.setFont(QFont(FONT_FAMILY, fs(10)))
+                        item.setFont(QFont(FONT_FAMILY, FONT_SMALL()))
 
     # ════════════════ Tab2 事件 ════════════════
     def _grid_cell_hover(self, row, col):
@@ -1847,21 +1847,22 @@ class MainWindow(QMainWindow):
                 item = QTableWidgetItem(v)
                 if j == 0:
                     item.setForeground(QColor(C_TEXT_SEC))
-                    item.setFont(QFont(FONT_FAMILY, FONT_BODY(), QFont.Bold))
+                    item.setFont(QFont(FONT_FAMILY, FONT_GRID()))
                 elif j == 1:
                     item.setForeground(QColor(C_TEXT))
-                    item.setFont(QFont("Consolas", FONT_BODY()))
+                    item.setFont(QFont("Consolas", FONT_GRID()))
                 elif j == 2:
                     if iw:
                         item.setForeground(QColor(C_WARN))
                     else:
                         item.setForeground(QColor(C_ERROR))
-                    item.setFont(QFont(FONT_FAMILY, FONT_BODY(), QFont.Bold))
+                    item.setFont(QFont(FONT_FAMILY, FONT_GRID()))
                 elif j == 3:
                     if iw:
                         item.setForeground(QColor(C_ACCENT))
                     else:
                         item.setForeground(QColor(C_TEXT_SEC))
+                    item.setFont(QFont(FONT_FAMILY, FONT_GRID()))
                 self.tbl.setItem(i, j, item)
 
     def _err(self, msg):
