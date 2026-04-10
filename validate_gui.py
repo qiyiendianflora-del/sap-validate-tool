@@ -4,7 +4,7 @@
 SAP凭证校验工具 v3.0 - PyQt5 GUI（橙色主题 + 卡片式布局 + 字体缩放）
 打包：pyinstaller --onefile --windowed --name SAP凭证校验工具 validate_gui.py
 """
-import sys, os, json
+import sys, os, json, shutil
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from collections import defaultdict
@@ -25,9 +25,11 @@ from openpyxl.styles import PatternFill, Font as XlFont, Alignment, Border, Side
 from openpyxl.utils import get_column_letter, column_index_from_string
 
 # ━━━━━━━ 常量 ━━━━━━━
-APP_NAME="SAP凭证校验工具"; VERSION="v3.0"; DATA_ROW=4
+APP_NAME="SAP凭证校验工具"; VERSION="v3.1"; DATA_ROW=4
 CONFIG_FILE=os.path.join(os.path.expanduser("~"),".sap_validate_config.json")
 CACHE_FILE=os.path.join(os.path.expanduser("~"),".sap_validate_cache.json")
+CACHE_DIR=os.path.join(os.path.expanduser("~"),".sap_validate_files")
+os.makedirs(CACHE_DIR, exist_ok=True)
 
 DEBIT_CODES={'01','21','40'}; CREDIT_CODES={'11','31','50'}; ALL_CODES=DEBIT_CODES|CREDIT_CODES
 RECON_CODES={'D':{'01','11'},'K':{'21','31'},None:{'40','50'},'':{'40','50'}}
@@ -65,6 +67,8 @@ HEADER_ROW2=['LINEID','BUKRS','BLART','BLDAT','BUDAT','WAERS','KURSF','BKTXT','X
 HEADER_ROW3=[10,4,2,'8(YYYYMMDD)','8(YYYYMMDD)',5,'(9,5)',25,16,2,10,1,10,3,'(13,2)','(13,2)',10,12,'8(YYYYMMDD)',12,18,50,1,10,'(13,3)',3,4,1,4,5,5,6,6,13,18,18,18,18,18,18,18,18,18,10,18,18,18,20,18,20,20]
 NUM_COLS=len(HEADER_ROW1)
 COL_LETTERS=[get_column_letter(i+1) for i in range(NUM_COLS)]
+RESULT_COL=0
+DATA_COL_OFFSET=1
 
 # ━━━━━━━ 字体体系（基准值 + 缩放） ━━━━━━━
 FONT_FAMILY = "微软雅黑"
@@ -205,7 +209,7 @@ def run_validate_data(all_rows, rule_map, recon_map, mapping_data=None, progress
             for cl,fn in FORBIDDEN_COLS_NON6:
                 ci=col_letter_to_idx(cl); v=rv[ci] if ci<len(rv) else None
                 if v is not None and str(v).strip()!='':
-                    errors[excel_row].append(('禁填字段有值',[cl],f'非6开头科目，{cl}({fn})不允许有值'))
+                    errors[excel_row].append(('禁填字段有值',[cl],f'该科目非损益科目（非6开头），无需填写{fn}信息，请清空"{fn}（{cl}列）"字段'))
         if mapping_sets and acct_str in mapping_sets:
             ak_val=_norm(rv[AK_IDX] if AK_IDX<len(rv) else None)
             al_val=_norm(rv[AL_IDX] if AL_IDX<len(rv) else None)
@@ -312,7 +316,7 @@ class ValidateWorker(QThread):
     def run(self):
         try:
             e,w,wb,ws,rm,t=run_validate(self.b,self.r,self.m,lambda v:self.progress.emit(v))
-            self.finished.emit({"errors":e,"warnings":w,"out_wb":wb,"total":t})
+            self.finished.emit({"errors":e,"warnings":w,"out_wb":wb,"ws":ws,"total":t})
         except: import traceback;self.error.emit(traceback.format_exc())
 
 class GridValidateWorker(QThread):
@@ -356,6 +360,8 @@ class PasteableTable(QTableWidget):
 
         if start_row < 3:
             start_row = 3
+        if start_col < DATA_COL_OFFSET:
+            start_col = DATA_COL_OFFSET
 
         needed = start_row + len(rows)
         if needed > self.rowCount():
@@ -752,22 +758,27 @@ class MainWindow(QMainWindow):
         _font_scale = max(0.8, min(2.0, scale / 100.0))
         self._apply_all_styles()
 
-        rp = cfg.get("rule_file", "")
-        if rp and os.path.exists(rp):
-            self.rule_file = rp
-            self.rule_block.drop.set_loaded(os.path.basename(rp))
-            self.rule_block.set_status("✔ 已加载 · 路径已记住", True)
-        mp = cfg.get("mapping_file", "")
-        if mp and os.path.exists(mp):
-            self.mapping_file = mp
-            self.mapping_block.drop.set_loaded(os.path.basename(mp))
+        # 从缓存目录加载规则表
+        cached_rule = os.path.join(CACHE_DIR, "rule_table.xlsx")
+        if os.path.exists(cached_rule):
+            self.rule_file = cached_rule
+            self.rule_block.drop.set_loaded("rule_table.xlsx")
+            self.rule_block.set_status("✅ 已加载（缓存）", True)
+
+        # 从缓存目录加载费用配置表
+        cached_mapping = os.path.join(CACHE_DIR, "mapping_table.xlsx")
+        if os.path.exists(cached_mapping):
+            self.mapping_file = cached_mapping
+            self.mapping_block.drop.set_loaded("mapping_table.xlsx")
         cached = load_mapping_cache()
         if cached:
             self.mapping_data = cached
             cnt = sum(len(v) for v in cached.values())
             self.mapping_block.set_status(
-                f"✔ 已加载 {len(cached)} 个科目 {cnt} 条规则", True
+                f"✅ 已加载（缓存） {len(cached)} 个科目 {cnt} 条规则", True
             )
+
+        # B表不缓存，仍从config加载
         bp = cfg.get("b_file", "")
         if bp and os.path.exists(bp):
             self.b_file = bp
@@ -1055,7 +1066,7 @@ class MainWindow(QMainWindow):
         self.tbl.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
         self.tbl.setColumnWidth(0, 80)
         self.tbl.setColumnWidth(1, 150)
-        self.tbl.setColumnWidth(2, 180)
+        self.tbl.setColumnWidth(2, 220)
         self.tbl.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.tbl.setAlternatingRowColors(True)
         self.tbl.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -1114,7 +1125,8 @@ class MainWindow(QMainWindow):
                 padding: 10px 16px;
             }}
             QTableWidget::item:selected {{
-                background: {C_DROP_BG};
+                background: #FF8C00;
+                color: #1C1917;
             }}
         """
 
@@ -1197,38 +1209,18 @@ class MainWindow(QMainWindow):
         nc = NUM_COLS + 1
         self.grid = PasteableTable()
         self.grid.setColumnCount(nc)
-        self.grid.setHorizontalHeaderLabels(COL_LETTERS + ["校验结果"])
+        self.grid.setHorizontalHeaderLabels(["校验结果"] + COL_LETTERS)
         self.grid.setRowCount(3 + 200)
 
         # 填充表头 3 行
         for r, hrow in enumerate([HEADER_ROW1, HEADER_ROW2, HEADER_ROW3]):
-            for c, v in enumerate(hrow):
-                item = QTableWidgetItem(str(v) if v is not None else "")
-                if r == 0:
-                    # Row 1: 白底 + 深棕红色文字
-                    item.setBackground(QColor("#FFFFFF"))
-                    item.setForeground(QColor("#8B2500"))
-                    item.setFont(QFont(FONT_FAMILY, FONT_GRID_H(), QFont.Bold))
-                elif r == 1:
-                    # Row 2: 浅灰底 + 棕色
-                    item.setBackground(QColor("#FAFAF8"))
-                    item.setForeground(QColor("#A0522D"))
-                    item.setFont(QFont(FONT_FAMILY, fs(10)))
-                else:
-                    # Row 3: 浅灰底 + 灰色
-                    item.setBackground(QColor("#FAFAF8"))
-                    item.setForeground(QColor("#A8A29E"))
-                    item.setFont(QFont(FONT_FAMILY, fs(10)))
-                item.setFlags(Qt.ItemIsEnabled)
-                item.setTextAlignment(Qt.AlignCenter)
-                self.grid.setItem(r, c, item)
-            # 校验结果列
+            # 校验结果列（第0列）
             result_texts = ["校验结果", "RESULT", "—"]
             item = QTableWidgetItem(result_texts[r])
             if r == 0:
                 item.setBackground(QColor("#FFFFFF"))
                 item.setForeground(QColor("#8B2500"))
-                item.setFont(QFont(FONT_FAMILY, FONT_GRID_H(), QFont.Bold))
+                item.setFont(QFont(FONT_FAMILY, FONT_BODY(), QFont.Bold))
             elif r == 1:
                 item.setBackground(QColor("#FAFAF8"))
                 item.setForeground(QColor("#A0522D"))
@@ -1239,11 +1231,29 @@ class MainWindow(QMainWindow):
                 item.setFont(QFont(FONT_FAMILY, fs(10)))
             item.setFlags(Qt.ItemIsEnabled)
             item.setTextAlignment(Qt.AlignCenter)
-            self.grid.setItem(r, NUM_COLS, item)
+            self.grid.setItem(r, RESULT_COL, item)
+            # 数据列（从第1列开始）
+            for c, v in enumerate(hrow):
+                item = QTableWidgetItem(str(v) if v is not None else "")
+                if r == 0:
+                    item.setBackground(QColor("#FFFFFF"))
+                    item.setForeground(QColor("#8B2500"))
+                    item.setFont(QFont(FONT_FAMILY, FONT_BODY(), QFont.Bold))
+                elif r == 1:
+                    item.setBackground(QColor("#FAFAF8"))
+                    item.setForeground(QColor("#A0522D"))
+                    item.setFont(QFont(FONT_FAMILY, fs(10)))
+                else:
+                    item.setBackground(QColor("#FAFAF8"))
+                    item.setForeground(QColor("#A8A29E"))
+                    item.setFont(QFont(FONT_FAMILY, fs(10)))
+                item.setFlags(Qt.ItemIsEnabled)
+                item.setTextAlignment(Qt.AlignCenter)
+                self.grid.setItem(r, c + DATA_COL_OFFSET, item)
 
         self.grid.setStyleSheet(self._grid_table_style())
         self.grid.horizontalHeader().setDefaultSectionSize(100)
-        self.grid.setColumnWidth(NUM_COLS, 360)
+        self.grid.setColumnWidth(RESULT_COL, 360)
         self.grid.verticalHeader().setDefaultSectionSize(30)
         self.grid.verticalHeader().setVisible(False)
         self.grid.setMouseTracking(True)
@@ -1270,7 +1280,7 @@ class MainWindow(QMainWindow):
                 padding: 6px;
                 border: none;
                 border-bottom: 2px solid #D4A574;
-                font-size: {FONT_GRID_H()}px;
+                font-size: {FONT_BODY()}px;
             }}
             QTableWidget::item:selected {{
                 background: #FFF7ED;
@@ -1504,7 +1514,7 @@ class MainWindow(QMainWindow):
         grid_err_w = max(240, int(360 * _font_scale + 0.5))
         self.grid.verticalHeader().setDefaultSectionSize(grid_row_h)
         self.grid.horizontalHeader().setDefaultSectionSize(grid_col_w)
-        self.grid.setColumnWidth(NUM_COLS, grid_err_w)
+        self.grid.setColumnWidth(RESULT_COL, grid_err_w)
         self.grid.setStyleSheet(self._grid_table_style())
 
         # 更新 grid 表头行字体
@@ -1513,7 +1523,7 @@ class MainWindow(QMainWindow):
                 item = self.grid.item(r, c)
                 if item:
                     if r == 0:
-                        item.setFont(QFont(FONT_FAMILY, FONT_GRID_H(), QFont.Bold))
+                        item.setFont(QFont(FONT_FAMILY, FONT_BODY(), QFont.Bold))
                     elif r == 1:
                         item.setFont(QFont(FONT_FAMILY, fs(10)))
                     else:
@@ -1521,8 +1531,9 @@ class MainWindow(QMainWindow):
 
     # ════════════════ Tab2 事件 ════════════════
     def _grid_cell_hover(self, row, col):
-        if col < NUM_COLS:
-            cl = COL_LETTERS[col]
+        data_col = col - DATA_COL_OFFSET
+        if 0 <= data_col < NUM_COLS:
+            cl = COL_LETTERS[data_col]
             key = (row, cl)
             if key in self.grid_errors:
                 pos = self.grid.viewport().mapToGlobal(QPoint(0, 0))
@@ -1553,7 +1564,7 @@ class MainWindow(QMainWindow):
             row_data = []
             has_data = False
             for c in range(NUM_COLS):
-                item = self.grid.item(r, c)
+                item = self.grid.item(r, c + DATA_COL_OFFSET)
                 v = item.text().strip() if item else ""
                 if v:
                     has_data = True
@@ -1609,7 +1620,7 @@ class MainWindow(QMainWindow):
             if gr >= self.grid.rowCount():
                 continue
             for c in range(NUM_COLS):
-                item = self.grid.item(gr, c)
+                item = self.grid.item(gr, c + DATA_COL_OFFSET)
                 if not item:
                     continue
                 cl = COL_LETTERS[c]
@@ -1623,10 +1634,10 @@ class MainWindow(QMainWindow):
                         self.grid_errors[(gr, cl)] = tip
                 else:
                     item.setBackground(QColor("#FEF3C7"))
-            ei = self.grid.item(gr, NUM_COLS)
+            ei = self.grid.item(gr, RESULT_COL)
             if not ei:
                 ei = QTableWidgetItem()
-                self.grid.setItem(gr, NUM_COLS, ei)
+                self.grid.setItem(gr, RESULT_COL, ei)
             ei.setText(" | ".join([e[2] for e in el]))
             ei.setForeground(QColor(C_ERROR))
             ei.setBackground(QColor("#FEF3C7"))
@@ -1636,13 +1647,13 @@ class MainWindow(QMainWindow):
             if gr >= self.grid.rowCount():
                 continue
             for c in range(NUM_COLS):
-                item = self.grid.item(gr, c)
+                item = self.grid.item(gr, c + DATA_COL_OFFSET)
                 if item:
                     item.setBackground(QColor("#FFE0B2"))
-            ei = self.grid.item(gr, NUM_COLS)
+            ei = self.grid.item(gr, RESULT_COL)
             if not ei:
                 ei = QTableWidgetItem()
-                self.grid.setItem(gr, NUM_COLS, ei)
+                self.grid.setItem(gr, RESULT_COL, ei)
             ei.setText(f"⚠️ 科目{acct}不在规则表中")
             ei.setForeground(QColor(C_WARN))
             ei.setBackground(QColor("#FFE0B2"))
@@ -1671,7 +1682,7 @@ class MainWindow(QMainWindow):
         for r in range(3, self.grid.rowCount()):
             has = False
             for c in range(NUM_COLS):
-                item = self.grid.item(r, c)
+                item = self.grid.item(r, c + DATA_COL_OFFSET)
                 v = item.text().strip() if item else ""
                 if v:
                     has = True
@@ -1709,8 +1720,9 @@ class MainWindow(QMainWindow):
 
     def _on_rule_chosen(self, p):
         self.rule_file = p
+        shutil.copy2(p, os.path.join(CACHE_DIR, "rule_table.xlsx"))
         self.rule_block.drop.set_loaded(os.path.basename(p))
-        self.rule_block.set_status("✔ 已加载 · 路径已记住", True)
+        self.rule_block.set_status("✔ 已加载 · 已缓存", True)
         self._save_paths()
 
     def _on_mapping_chosen(self, p):
@@ -1735,6 +1747,7 @@ class MainWindow(QMainWindow):
             data = load_mapping_table(path)
             self.mapping_data = data
             self.mapping_file = path
+            shutil.copy2(path, os.path.join(CACHE_DIR, "mapping_table.xlsx"))
             save_mapping_cache(data)
             self._save_paths()
             self.mapping_block.drop.set_loaded(os.path.basename(path))
@@ -1776,7 +1789,13 @@ class MainWindow(QMainWindow):
         self.prog_text.setText(f"校验完成 — 共 {total} 行已处理")
 
         self.all_table_rows = []
+        ws = result.get("ws")
         for r in sorted(errs.keys()):
+            acct = ''
+            if ws:
+                cell_val = ws.cell(row=r, column=13).value
+                if cell_val is not None:
+                    acct = str(int(cell_val)) if isinstance(cell_val, float) else str(cell_val).strip()
             for et, cols, msg in errs[r]:
                 if '必输' in et or '金额' in et:
                     cat = '必输项'
@@ -1790,7 +1809,7 @@ class MainWindow(QMainWindow):
                     cat = '费用类别'
                 else:
                     cat = '其他'
-                self.all_table_rows.append((str(r), '', f"❌ {et}", msg, cat, False))
+                self.all_table_rows.append((str(r), acct, f"❌ {et}", msg, cat, False))
         for w in warns:
             if w[2] == '科目不在规则表':
                 self.all_table_rows.append(
