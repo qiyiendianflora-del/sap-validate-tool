@@ -25,7 +25,7 @@ from openpyxl.styles import PatternFill, Font as XlFont, Alignment, Border, Side
 from openpyxl.utils import get_column_letter, column_index_from_string
 
 # ━━━━━━━ 常量 ━━━━━━━
-APP_NAME="SAP凭证校验工具"; VERSION="v3.3"; DATA_ROW=4
+APP_NAME="SAP凭证校验工具"; VERSION="v3.4"; DATA_ROW=4
 CONFIG_FILE=os.path.join(os.path.expanduser("~"),".sap_validate_config.json")
 CACHE_FILE=os.path.join(os.path.expanduser("~"),".sap_validate_cache.json")
 CACHE_DIR=os.path.join(os.path.expanduser("~"),".sap_validate_files")
@@ -1064,9 +1064,9 @@ class MainWindow(QMainWindow):
         self.tbl.setColumnCount(4)
         self.tbl.setHorizontalHeaderLabels(["行号", "总账科目", "错误类型", "错误详情"])
         self.tbl.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
-        self.tbl.setColumnWidth(0, 80)
-        self.tbl.setColumnWidth(1, 150)
-        self.tbl.setColumnWidth(2, 220)
+        self.tbl.setColumnWidth(0, 60)
+        self.tbl.setColumnWidth(1, 200)
+        self.tbl.setColumnWidth(2, 260)
         self.tbl.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.tbl.setAlternatingRowColors(True)
         self.tbl.setSelectionBehavior(QAbstractItemView.SelectRows)
