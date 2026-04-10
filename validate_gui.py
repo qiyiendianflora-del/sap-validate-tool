@@ -25,7 +25,7 @@ from openpyxl.styles import PatternFill, Font as XlFont, Alignment, Border, Side
 from openpyxl.utils import get_column_letter, column_index_from_string
 
 # ━━━━━━━ 常量 ━━━━━━━
-APP_NAME="SAP凭证校验工具"; VERSION="v3.5"; DATA_ROW=4
+APP_NAME="SAP凭证校验工具"; VERSION="v3.6"; DATA_ROW=4
 CONFIG_FILE=os.path.join(os.path.expanduser("~"),".sap_validate_config.json")
 CACHE_FILE=os.path.join(os.path.expanduser("~"),".sap_validate_cache.json")
 CACHE_DIR=os.path.join(os.path.expanduser("~"),".sap_validate_files")
@@ -69,6 +69,7 @@ NUM_COLS=len(HEADER_ROW1)
 COL_LETTERS=[get_column_letter(i+1) for i in range(NUM_COLS)]
 RESULT_COL=0
 DATA_COL_OFFSET=1
+GRID_HEADER_ROWS=1  # 只保留中文列名一行
 
 # ━━━━━━━ 字体体系（基准值 + 缩放） ━━━━━━━
 FONT_FAMILY = "微软雅黑"
@@ -358,8 +359,8 @@ class PasteableTable(QTableWidget):
             start_row = self.currentRow()
             start_col = self.currentColumn()
 
-        if start_row < 3:
-            start_row = 3
+        if start_row < GRID_HEADER_ROWS:
+            start_row = GRID_HEADER_ROWS
         if start_col < DATA_COL_OFFSET:
             start_col = DATA_COL_OFFSET
 
@@ -373,7 +374,7 @@ class PasteableTable(QTableWidget):
                 c = start_col + j
                 if c >= self.columnCount():
                     break
-                if r < 3:
+                if r < GRID_HEADER_ROWS:
                     continue
                 item = self.item(r, c)
                 if item is None:
@@ -1210,46 +1211,26 @@ class MainWindow(QMainWindow):
         self.grid = PasteableTable()
         self.grid.setColumnCount(nc)
         self.grid.setHorizontalHeaderLabels(["校验结果"] + COL_LETTERS)
-        self.grid.setRowCount(3 + 200)
+        self.grid.setRowCount(GRID_HEADER_ROWS + 200)
 
-        # 填充表头 3 行
-        for r, hrow in enumerate([HEADER_ROW1, HEADER_ROW2, HEADER_ROW3]):
-            # 校验结果列（第0列）
-            result_texts = ["校验结果", "RESULT", "—"]
-            item = QTableWidgetItem(result_texts[r])
-            if r == 0:
-                item.setBackground(QColor("#FFFFFF"))
-                item.setForeground(QColor("#8B2500"))
-                item.setFont(QFont(FONT_FAMILY, FONT_SMALL(), QFont.Bold))
-            elif r == 1:
-                item.setBackground(QColor("#FAFAF8"))
-                item.setForeground(QColor("#A0522D"))
-                item.setFont(QFont(FONT_FAMILY, FONT_SMALL()))
-            else:
-                item.setBackground(QColor("#FAFAF8"))
-                item.setForeground(QColor("#A8A29E"))
-                item.setFont(QFont(FONT_FAMILY, FONT_SMALL()))
+        # 填充表头（只保留中文列名1行）
+        # 校验结果列（第0列）
+        item = QTableWidgetItem("校验结果")
+        item.setBackground(QColor("#FFFFFF"))
+        item.setForeground(QColor("#8B2500"))
+        item.setFont(QFont(FONT_FAMILY, FONT_SMALL(), QFont.Bold))
+        item.setFlags(Qt.ItemIsEnabled)
+        item.setTextAlignment(Qt.AlignCenter)
+        self.grid.setItem(0, RESULT_COL, item)
+        # 数据列（从第1列开始）
+        for c, v in enumerate(HEADER_ROW1):
+            item = QTableWidgetItem(str(v) if v is not None else "")
+            item.setBackground(QColor("#FFFFFF"))
+            item.setForeground(QColor("#8B2500"))
+            item.setFont(QFont(FONT_FAMILY, FONT_SMALL(), QFont.Bold))
             item.setFlags(Qt.ItemIsEnabled)
             item.setTextAlignment(Qt.AlignCenter)
-            self.grid.setItem(r, RESULT_COL, item)
-            # 数据列（从第1列开始）
-            for c, v in enumerate(hrow):
-                item = QTableWidgetItem(str(v) if v is not None else "")
-                if r == 0:
-                    item.setBackground(QColor("#FFFFFF"))
-                    item.setForeground(QColor("#8B2500"))
-                    item.setFont(QFont(FONT_FAMILY, FONT_SMALL(), QFont.Bold))
-                elif r == 1:
-                    item.setBackground(QColor("#FAFAF8"))
-                    item.setForeground(QColor("#A0522D"))
-                    item.setFont(QFont(FONT_FAMILY, FONT_SMALL()))
-                else:
-                    item.setBackground(QColor("#FAFAF8"))
-                    item.setForeground(QColor("#A8A29E"))
-                    item.setFont(QFont(FONT_FAMILY, FONT_SMALL()))
-                item.setFlags(Qt.ItemIsEnabled)
-                item.setTextAlignment(Qt.AlignCenter)
-                self.grid.setItem(r, c + DATA_COL_OFFSET, item)
+            self.grid.setItem(0, c + DATA_COL_OFFSET, item)
 
         self.grid.setStyleSheet(self._grid_table_style())
         self.grid.horizontalHeader().setDefaultSectionSize(100)
@@ -1518,16 +1499,11 @@ class MainWindow(QMainWindow):
         self.grid.setStyleSheet(self._grid_table_style())
 
         # 更新 grid 表头行字体
-        for r in range(3):
+        for r in range(GRID_HEADER_ROWS):
             for c in range(NUM_COLS + 1):
                 item = self.grid.item(r, c)
                 if item:
-                    if r == 0:
-                        item.setFont(QFont(FONT_FAMILY, FONT_SMALL(), QFont.Bold))
-                    elif r == 1:
-                        item.setFont(QFont(FONT_FAMILY, FONT_SMALL()))
-                    else:
-                        item.setFont(QFont(FONT_FAMILY, FONT_SMALL()))
+                    item.setFont(QFont(FONT_FAMILY, FONT_SMALL(), QFont.Bold))
 
     # ════════════════ Tab2 事件 ════════════════
     def _grid_cell_hover(self, row, col):
@@ -1540,7 +1516,7 @@ class MainWindow(QMainWindow):
                 QToolTip.showText(pos, self.grid_errors[key])
 
     def _grid_clear(self):
-        for r in range(3, self.grid.rowCount()):
+        for r in range(GRID_HEADER_ROWS, self.grid.rowCount()):
             for c in range(self.grid.columnCount()):
                 item = self.grid.item(r, c)
                 if item:
@@ -1560,7 +1536,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "提示", "请先在「文件校验」页面上传校验规则表！")
             return
         all_rows = {}
-        for r in range(3, self.grid.rowCount()):
+        for r in range(GRID_HEADER_ROWS, self.grid.rowCount()):
             row_data = []
             has_data = False
             for c in range(NUM_COLS):
@@ -1600,7 +1576,7 @@ class MainWindow(QMainWindow):
 
         # 清除之前标色
         self.grid_errors = {}
-        for r in range(3, self.grid.rowCount()):
+        for r in range(GRID_HEADER_ROWS, self.grid.rowCount()):
             for c in range(self.grid.columnCount()):
                 item = self.grid.item(r, c)
                 if item:
@@ -1679,7 +1655,7 @@ class MainWindow(QMainWindow):
         for r, hrow in enumerate([HEADER_ROW1, HEADER_ROW2, HEADER_ROW3], 1):
             for c, v in enumerate(hrow, 1):
                 ws.cell(row=r, column=c, value=v)
-        for r in range(3, self.grid.rowCount()):
+        for r in range(GRID_HEADER_ROWS, self.grid.rowCount()):
             has = False
             for c in range(NUM_COLS):
                 item = self.grid.item(r, c + DATA_COL_OFFSET)
@@ -1693,7 +1669,7 @@ class MainWindow(QMainWindow):
                         v = float(v)
                     except:
                         pass
-                ws.cell(row=r + 1, column=c + 1, value=v if v != "" else None)
+                ws.cell(row=r + 3, column=c + 1, value=v if v != "" else None)
             if not has:
                 break
         rm, _ = load_rule_table(self.rule_file)
