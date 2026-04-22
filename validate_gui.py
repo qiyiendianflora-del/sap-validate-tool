@@ -25,7 +25,7 @@ from openpyxl.styles import PatternFill, Font as XlFont, Alignment, Border, Side
 from openpyxl.utils import get_column_letter, column_index_from_string
 
 # ━━━━━━━ 常量 ━━━━━━━
-APP_NAME="SAP凭证校验工具"; VERSION="v3.8"; DATA_ROW=4
+APP_NAME="SAP凭证校验工具"; VERSION="v3.9"; DATA_ROW=4
 CONFIG_FILE=os.path.join(os.path.expanduser("~"),".sap_validate_config.json")
 CACHE_FILE=os.path.join(os.path.expanduser("~"),".sap_validate_cache.json")
 CACHE_DIR=os.path.join(os.path.expanduser("~"),".sap_validate_files")
@@ -1264,7 +1264,8 @@ class MainWindow(QMainWindow):
                 font-size: {FONT_BODY()}px;
             }}
             QTableWidget::item:selected {{
-                background: #FFF7ED;
+                background: #FFD8A6;
+                color: #1C1917;
             }}
         """
 
@@ -1544,14 +1545,18 @@ class MainWindow(QMainWindow):
                 v = item.text().strip() if item else ""
                 if v:
                     has_data = True
-                try:
-                    v = int(v)
-                except:
+                # 金额列(O列)保持字符串，避免float精度问题
+                if c == O_IDX - DATA_COL_OFFSET:
+                    row_data.append(v if v != "" else None)
+                else:
                     try:
-                        v = float(v)
+                        v = int(v)
                     except:
-                        pass
-                row_data.append(v if v != "" else None)
+                        try:
+                            v = float(v)
+                        except:
+                            pass
+                    row_data.append(v if v != "" else None)
             if has_data:
                 all_rows[r + 1] = row_data
         if not all_rows:
