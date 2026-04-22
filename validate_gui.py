@@ -1559,6 +1559,17 @@ class MainWindow(QMainWindow):
                     row_data.append(v if v != "" else None)
             if has_data:
                 all_rows[r + 1] = row_data
+        
+        # DEBUG: 输出读取到的数据
+        debug_info = f"读取到 {len(all_rows)} 行数据\n"
+        for r, rv in list(all_rows.items())[:5]:
+            a_val = rv[A_IDX] if A_IDX < len(rv) else None
+            b_val = rv[B_IDX] if B_IDX < len(rv) else None
+            j_val = rv[J_IDX] if J_IDX < len(rv) else None
+            o_val = rv[O_IDX] if O_IDX < len(rv) else None
+            debug_info += f"行{r}: 凭证={a_val}, 公司={b_val}, 记账码={j_val}, 金额={o_val}\n"
+        print(debug_info)
+        QMessageBox.information(self, "调试信息", debug_info)
         if not all_rows:
             QMessageBox.warning(self, "提示", "表格中没有数据，请先粘贴数据！")
             return
