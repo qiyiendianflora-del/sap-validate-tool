@@ -25,7 +25,7 @@ from openpyxl.styles import PatternFill, Font as XlFont, Alignment, Border, Side
 from openpyxl.utils import get_column_letter, column_index_from_string
 
 # ━━━━━━━ 常量 ━━━━━━━
-APP_NAME="SAP凭证校验工具"; VERSION="v3.9"; DATA_ROW=4
+APP_NAME="SAP凭证校验工具"; VERSION="v3.9.3"; DATA_ROW=4
 CONFIG_FILE=os.path.join(os.path.expanduser("~"),".sap_validate_config.json")
 CACHE_FILE=os.path.join(os.path.expanduser("~"),".sap_validate_cache.json")
 CACHE_DIR=os.path.join(os.path.expanduser("~"),".sap_validate_files")
@@ -156,7 +156,10 @@ def load_mapping_table(mf):
     return {k:list(v) for k,v in mp.items()}
 def safe_decimal(val):
     if val is None: return None
-    try: return Decimal(str(val).strip())
+    try:
+        # 去除千分位逗号（如 "4,071.52" -> "4071.52"）
+        cleaned = str(val).strip().replace(',', '')
+        return Decimal(cleaned)
     except: return None
 def check_decimal_places(val):
     d=safe_decimal(val)
@@ -1545,8 +1548,13 @@ class MainWindow(QMainWindow):
                 v = item.text().strip() if item else ""
                 if v:
                     has_data = True
-                # 金额列(O列)保持字符串，避免float精度问题
+                # 金额列(O列)和记账码列(J列)保持字符串，避免精度问题和前导零丢失
                 if c == O_IDX:
+                    # 去除千分位逗号
+                    v_clean = v.replace(',', '') if v else v
+                    row_data.append(v_clean if v_clean != "" else None)
+                elif c == J_IDX:
+                    # 记账码保持字符串，保留前导零
                     row_data.append(v if v != "" else None)
                 else:
                     try:
@@ -1560,16 +1568,7 @@ class MainWindow(QMainWindow):
             if has_data:
                 all_rows[r + 1] = row_data
         
-        # DEBUG: 输出读取到的数据
-        debug_info = f"读取到 {len(all_rows)} 行数据\n"
-        for r, rv in list(all_rows.items())[:5]:
-            a_val = rv[A_IDX] if A_IDX < len(rv) else None
-            b_val = rv[B_IDX] if B_IDX < len(rv) else None
-            j_val = rv[J_IDX] if J_IDX < len(rv) else None
-            o_val = rv[O_IDX] if O_IDX < len(rv) else None
-            debug_info += f"行{r}: 凭证={a_val}, 公司={b_val}, 记账码={j_val}, 金额={o_val}\n"
-        print(debug_info)
-        QMessageBox.information(self, "调试信息", debug_info)
+
         if not all_rows:
             QMessageBox.warning(self, "提示", "表格中没有数据，请先粘贴数据！")
             return
