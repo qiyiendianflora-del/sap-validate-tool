@@ -1546,7 +1546,7 @@ class MainWindow(QMainWindow):
                 if v:
                     has_data = True
                 # 金额列(O列)保持字符串，避免float精度问题
-                if c == O_IDX - DATA_COL_OFFSET:
+                if c == O_IDX:
                     row_data.append(v if v != "" else None)
                 else:
                     try:
